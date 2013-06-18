@@ -1,4 +1,4 @@
-<?php 
+<?php
 /**
  * Project: mxCalendar
  * Purpose: A parser helper file to do a few little things
@@ -8,33 +8,30 @@ function tstamptotime($ISO8601,$tstamp=null,$mergeTime=false) {
         // 1984-09-01T14:21:31
 		//-- do quick sanity check
 		if(empty($ISO8601) || (is_null($tstamp) && $mergeTime)) return false;
-		
+
 		sscanf($ISO8601,"%u-%u-%uT%u:%u:%u",$year,$month,$day,$hour,$min,$sec);
-		
+
 		if($mergeTime) {
 			sscanf(date("H:i:s", strtotime($tstamp)),"%u:%u:%u",$hour,$min,$sec);
 		}
-	   
+
         $newtstamp=mktime($hour,$min,$sec,$month,$day,$year);
         return $newtstamp;
 }
 
 //-- Make reoccuring event list
-function _getRepeatDates($frequencymode=0, $interval=1, $frequency='1',$startDate = null, $endDate = null,$onwd=array(0,1,2,3,4,5,6),$occType = 'UNIX'){
+function _getRepeatDates($frequencymode=0, $interval=1, $frequency='1',$startDate = null, $endDate = null,$onwd=array(0,1,2,3,4,5,6),$occType = 'UNIX',$options=''){
     // Lets check the timezone setting so that our date functions return correct dates for location
-
-/*
-
-// this section temporarily removed to alleviate issue with daylight savings (see Issue #67)
-
+    /* Removed until fully supported with offset value saving in db
     if(date_default_timezone_get() != 'UTC'){
         $curTZ = date_default_timezone_get();
         if($debug) { echo 'DEBUG: Current TimeZone set to '.$curTZ.PHP_EOL; }
         date_default_timezone_set('UTC');
         if($debug) { echo 'DEBUG: SET TimeZone to '.$curTZ.' for date calculations'.PHP_EOL; }
     }
-*/    
-    
+    */
+    global $modx;
+
     //-- Date Output Format
     $dateFormat = 'D n-j-Y'; //'Y-m-d h:i a';
     //-- Time Output Format
@@ -55,6 +52,8 @@ function _getRepeatDates($frequencymode=0, $interval=1, $frequency='1',$startDat
     $ar_Recur = array();
     //-- Enable the debugger (Manager)
     $debug = false;
+
+    $x = 0;
 
     $theParameter = array('MODE'=>$frequencymode, 'interval'=>$interval, 'frequency'=>$frequency, 'StartDate'=>$startDate, 'EndDate'=>$endDate, 'OnWeedkDay'=>$onwd);
     if($debug){
@@ -83,8 +82,36 @@ function _getRepeatDates($frequencymode=0, $interval=1, $frequency='1',$startDat
             }
             break;
         case 2: //Monthly
+            $occurance = $startDate;
+
+            $modx->log(modX::LOG_LEVEL_ERROR,'[mxHelper] mxFormBuilder _getRpeatDate:[options]<br />'.$options);
+
+            $options = !empty($options) ? json_decode($options, true) : '';
             while (++$x){
-                $occurance = mktime(date('H', $startDate), date('i', $startDate), 0, date('m', $startDate)+($x*$interval) , date('d', $startDate), date('y', $startDate));
+
+                if(!empty($options)){
+
+			SWITCH($options['type']){
+				case 'dow':
+					// Day of week is simply the same day of a week
+					$occurance = strtotime($options['week']." ".strftime('%A', $occurance)." of next month", $occurance);
+                                        $occurance = mktime(date('H', $startDate), date('i', $startDate), 0, date('m', $occurance) , date('d', $occurance), date('y', $occurance));
+					break;
+				case 'dom':
+					$occurance = strtotime("next month", $occurance);
+					$occurance = mktime(date('H', $startDate), date('i', $startDate), 0, date('m', $occurance) , date('d', $occurance), date('y', $occurance));
+                                        break;
+				default:
+					$occurance = mktime(date('H', $startDate), date('i', $startDate), 0, date('m', $startDate)+($x*$interval) , date('d', $startDate), date('y', $startDate));
+					break;
+			}
+
+                        $modx->log(modX::LOG_LEVEL_ERROR, '[mxHelper] _getRpeatDate: Option['.$options['type'].'] :: Occurance['.$x.']=>'.date('Y-m-d h:i a', $occurance) );
+
+                } else {
+	                $occurance = mktime(date('H', $startDate), date('i', $startDate), 0, date('m', $startDate)+($x*$interval) , date('d', $startDate), date('y', $startDate));
+		}
+
                 if($occurance <= $endDate && $x < $frequency && $startDate < $occurance){
                     $ar_Recur[] = $occurance;
                     if($debug) echo $occurance."< -is less than -> ".$endDate.'<br />';
@@ -97,7 +124,7 @@ function _getRepeatDates($frequencymode=0, $interval=1, $frequency='1',$startDat
             break;
         case 1: //Weekly
             $valid = true;
-                            
+
             //-- Get the first repeat Day of Week if the same as start date's Day of Week
             $curWeek = $startWeek = strftime('%W',$startDate);
             $occurance = strftime('%Y-%m-%d %H:%M:%S',$startDate);
@@ -120,7 +147,7 @@ function _getRepeatDates($frequencymode=0, $interval=1, $frequency='1',$startDat
                             if($debug) echo $occDate." MATCH on $thisDOW (start week) :: CurWk=$curWeek :: StartWk=$startWeek :: NextWk=$nextWeek<br />";
                             $ar_Recur[] = ($occType == 'UNIX' ? strtotime($occDate) : $occDate);
                     } else {
-                            if($debug  && $curWeek == $startWeek && strtotime($occDate) < strtotime($nextWeek)) 
+                            if($debug  && $curWeek == $startWeek && strtotime($occDate) < strtotime($nextWeek))
                             echo $occDate." (start week)<br />";
                     }
             }
@@ -185,7 +212,7 @@ function _getRepeatDates($frequencymode=0, $interval=1, $frequency='1',$startDat
                     break;
                 }
             }
-            break;    
+            break;
         }
         //-- Display the results to validate
         if($debug){
